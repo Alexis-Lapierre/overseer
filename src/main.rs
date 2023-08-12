@@ -1,5 +1,5 @@
 use iced::{
-    widget::{Column, Container, Text, TextInput},
+    widget::{row, Button, Column, Container, Text, TextInput},
     Sandbox, Settings,
 };
 
@@ -46,23 +46,30 @@ impl Sandbox for IPAddresses {
     }
 
     fn view(&self) -> iced::Element<'_, Self::Message> {
-        let label = Text::new(format!("List of {} IP addresses!", self.ip.len()));
+        let mut col = {
+            let label = Text::new(format!("List of {} IP addresses!", self.ip.len()));
 
-        let input = TextInput::new("put your IP address here", &self.input_address)
-            .on_input(|text| Message::InputAddressChanged(text))
-            .on_submit(Message::AddAddress);
+            let input = TextInput::new("put your IP address here", &self.input_address)
+                .on_input(Message::InputAddressChanged)
+                .on_submit(Message::AddAddress);
 
-        let mut col = Column::new().push(label).push(input);
+            Column::new().padding(5).push(label).push(input)
+        };
 
-        for ip in &self.ip {
-            let ip_text_widget = Text::new(ip);
-            col = col.push(ip_text_widget);
+        for (index, ip_address) in self.ip.iter().enumerate() {
+            let ip_text_widget = Text::new(ip_address).width(iced::Length::Fill);
+            let delete_button = Button::new("Remove").on_press(Message::RemoveAddressAt(index));
+
+            let row = row![ip_text_widget, delete_button].padding(5);
+
+            col = col.push(row);
         }
 
         Container::new(col)
             .center_x()
             .width(iced::Length::Fill)
             .height(iced::Length::Fill)
+            .padding(5)
             .into()
     }
 }
