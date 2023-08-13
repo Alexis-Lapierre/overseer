@@ -1491,6 +1491,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "overseer"
+version = "0.1.0"
+dependencies = [
+ "iced",
+]
+
+[[package]]
 name = "owned_ttf_parser"
 version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2814,13 +2821,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "463705a63313cd4301184381c5e8042f0a7e9b4bb63653f216311d4ae74690b7"
 dependencies = [
  "nom",
-]
-
-[[package]]
-name = "xena_manager"
-version = "0.1.0"
-dependencies = [
- "iced",
 ]
 
 [[package]]

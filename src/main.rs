@@ -27,7 +27,7 @@ impl Sandbox for IPAddresses {
     }
 
     fn title(&self) -> String {
-        "Xena Linux app".into()
+        "Overseer".into()
     }
 
     fn update(&mut self, message: Self::Message) {
