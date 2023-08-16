@@ -1,9 +1,12 @@
 use iced::{
+    executor,
+    keyboard::{KeyCode, Modifiers},
+    subscription,
     widget::{row, Button, Column, Container, Text, TextInput},
-    Sandbox, Settings,
+    window, Application, Command, Settings, Subscription, Theme,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct IPAddresses {
     ip: Vec<String>,
     input_address: String,
@@ -14,38 +17,59 @@ enum Message {
     InputAddressChanged(String),
     AddAddress,
     RemoveAddressAt(usize),
+    Exit,
 }
 
-impl Sandbox for IPAddresses {
+impl Application for IPAddresses {
+    type Executor = executor::Default;
     type Message = Message;
+    type Theme = Theme;
+    type Flags = ();
 
-    fn new() -> Self {
-        Self {
-            ip: Vec::new(),
-            input_address: String::new(),
-        }
+    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
+        (Self::default(), Command::none())
     }
 
     fn title(&self) -> String {
         "Overseer".into()
     }
 
-    fn update(&mut self, message: Self::Message) {
+    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
             Message::InputAddressChanged(current) => {
                 self.input_address = current;
+                Command::none()
             }
             Message::AddAddress => {
                 self.ip.push(self.input_address.clone());
                 self.input_address.clear();
+                Command::none()
             }
             Message::RemoveAddressAt(index) => {
                 self.ip.swap_remove(index);
+                Command::none()
             }
+            Message::Exit => window::close(),
         }
     }
 
-    fn view(&self) -> iced::Element<'_, Self::Message> {
+    fn subscription(&self) -> Subscription<Self::Message> {
+        subscription::events_with(|event, _status| {
+            if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                key_code,
+                modifiers,
+            }) = event
+            {
+                if key_code == KeyCode::Q && modifiers == Modifiers::CTRL {
+                    return Some(Message::Exit);
+                }
+            }
+
+            None
+        })
+    }
+
+    fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
         let mut col = {
             let label = Text::new(format!("List of {} IP addresses!", self.ip.len()));
 
@@ -75,7 +99,15 @@ impl Sandbox for IPAddresses {
 }
 
 fn main() -> Result<(), iced::Error> {
-    let mut settings = Settings::default();
-    settings.window.min_size = Some((250, 100));
+    let window_settings = iced::window::Settings {
+        min_size: Some((250, 100)),
+        ..Default::default()
+    };
+
+    let settings = Settings {
+        window: window_settings,
+        ..Default::default()
+    };
+
     IPAddresses::run(settings)
 }
