@@ -7,9 +7,15 @@ use iced::{
 };
 
 #[derive(Debug, Default)]
-struct IPAddresses {
-    ip: Vec<String>,
+struct ApplicationState {
+    ip: Vec<Connection>,
     input_address: String,
+}
+
+#[derive(Debug, Default)]
+struct Connection {
+    address: String,
+    connection_is_possible: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -20,7 +26,7 @@ enum Message {
     Exit,
 }
 
-impl Application for IPAddresses {
+impl Application for ApplicationState {
     type Executor = executor::Default;
     type Message = Message;
     type Theme = Theme;
@@ -41,7 +47,10 @@ impl Application for IPAddresses {
                 Command::none()
             }
             Message::AddAddress => {
-                self.ip.push(self.input_address.clone());
+                self.ip.push(Connection {
+                    address: self.input_address.clone(),
+                    connection_is_possible: false,
+                });
                 self.input_address.clear();
                 Command::none()
             }
@@ -78,11 +87,18 @@ impl Application for IPAddresses {
             Column::new().padding(5).push(input)
         };
 
-        for (index, ip_address) in self.ip.iter().enumerate() {
-            let ip_text_widget = Text::new(ip_address).width(iced::Length::Fill);
+        for (index, connection) in self.ip.iter().enumerate() {
+            let ip_text_widget = Text::new(&connection.address);
+            let status = if connection.connection_is_possible {
+                Text::new("Connected !")
+            } else {
+                Text::new("Not connected!")
+            }
+            .width(iced::Length::Fill);
+
             let delete_button = Button::new("Remove").on_press(Message::RemoveAddressAt(index));
 
-            let row = row![ip_text_widget, delete_button].padding(5);
+            let row = row![ip_text_widget, status, delete_button].padding(5);
 
             col = col.push(row);
         }
@@ -107,5 +123,5 @@ fn main() -> Result<(), iced::Error> {
         ..Default::default()
     };
 
-    IPAddresses::run(settings)
+    ApplicationState::run(settings)
 }
