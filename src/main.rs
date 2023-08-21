@@ -71,13 +71,11 @@ impl Application for IPAddresses {
 
     fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
         let mut col = {
-            let label = Text::new(format!("List of {} IP addresses!", self.ip.len()));
-
-            let input = TextInput::new("put your IP address here", &self.input_address)
+            let input = TextInput::new("Connect to", &self.input_address)
                 .on_input(Message::InputAddressChanged)
                 .on_submit(Message::AddAddress);
 
-            Column::new().padding(5).push(label).push(input)
+            Column::new().padding(5).push(input)
         };
 
         for (index, ip_address) in self.ip.iter().enumerate() {
