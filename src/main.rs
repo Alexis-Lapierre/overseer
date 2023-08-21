@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use iced::{
     executor,
     keyboard::{KeyCode, Modifiers},
@@ -8,21 +10,15 @@ use iced::{
 
 #[derive(Debug, Default)]
 struct ApplicationState {
-    ip: Vec<Connection>,
+    connections: HashMap<String, bool>,
     input_address: String,
-}
-
-#[derive(Debug, Default)]
-struct Connection {
-    address: String,
-    connection_is_possible: bool,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     InputAddressChanged(String),
     AddAddress,
-    RemoveAddressAt(usize),
+    RemoveAddress(String),
     Exit,
 }
 
@@ -47,15 +43,12 @@ impl Application for ApplicationState {
                 Command::none()
             }
             Message::AddAddress => {
-                self.ip.push(Connection {
-                    address: self.input_address.clone(),
-                    connection_is_possible: false,
-                });
+                self.connections.insert(self.input_address.clone(), false);
                 self.input_address.clear();
                 Command::none()
             }
-            Message::RemoveAddressAt(index) => {
-                self.ip.swap_remove(index);
+            Message::RemoveAddress(key) => {
+                self.connections.remove(&key);
                 Command::none()
             }
             Message::Exit => window::close(),
@@ -87,18 +80,18 @@ impl Application for ApplicationState {
             Column::new().padding(5).push(input)
         };
 
-        for (index, connection) in self.ip.iter().enumerate() {
-            let ip_text_widget = Text::new(&connection.address);
-            let status = if connection.connection_is_possible {
-                Text::new("Connected !")
+        for (address, is_connected) in self.connections.iter() {
+            let status: &'static str = if *is_connected {
+                "Connected !"
             } else {
-                Text::new("Not connected!")
-            }
-            .width(iced::Length::Fill);
+                "Not connected !"
+            };
 
-            let delete_button = Button::new("Remove").on_press(Message::RemoveAddressAt(index));
+            let ip_text_widget = Text::new(format!("{address} {status}")).width(iced::Length::Fill);
+            let delete_button =
+                Button::new("Remove").on_press(Message::RemoveAddress(address.clone()));
 
-            let row = row![ip_text_widget, status, delete_button].padding(5);
+            let row = row![ip_text_widget, delete_button].padding(5);
 
             col = col.push(row);
         }
