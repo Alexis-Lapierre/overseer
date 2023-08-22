@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time};
+
+use async_std::task::sleep;
 
 use iced::{
     executor,
@@ -10,16 +12,23 @@ use iced::{
 
 #[derive(Debug, Default)]
 struct ApplicationState {
-    connections: HashMap<String, bool>,
+    connections: HashMap<String, String>,
     input_address: String,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     InputAddressChanged(String),
+    AsyncTest(String, String),
     AddAddress,
     RemoveAddress(String),
     Exit,
+}
+
+async fn some_async_fun(_key: String) -> &'static str {
+    sleep(time::Duration::from_secs(2)).await;
+
+    "async resolved"
 }
 
 impl Application for ApplicationState {
@@ -43,14 +52,29 @@ impl Application for ApplicationState {
                 Command::none()
             }
             Message::AddAddress => {
-                self.connections.insert(self.input_address.clone(), false);
+                let address = self.input_address.clone();
                 self.input_address.clear();
-                Command::none()
+
+                self.connections
+                    .insert(address.clone(), "Not resolved".into());
+
+                Command::perform(some_async_fun(address.clone()), |arg| {
+                    Message::AsyncTest(address, arg.into())
+                })
             }
             Message::RemoveAddress(key) => {
                 self.connections.remove(&key);
                 Command::none()
             }
+
+            Message::AsyncTest(key, resolved) => {
+                if let Some(value) = self.connections.get_mut(&key) {
+                    *value = resolved;
+                }
+
+                Command::none()
+            }
+
             Message::Exit => window::close(),
         }
     }
@@ -80,14 +104,9 @@ impl Application for ApplicationState {
             Column::new().padding(5).push(input)
         };
 
-        for (address, is_connected) in self.connections.iter() {
-            let status: &'static str = if *is_connected {
-                "Connected !"
-            } else {
-                "Not connected !"
-            };
-
-            let ip_text_widget = Text::new(format!("{address} {status}")).width(iced::Length::Fill);
+        for (address, connected_status) in self.connections.iter() {
+            let ip_text_widget =
+                Text::new(format!("{address} - {connected_status}")).width(iced::Length::Fill);
             let delete_button =
                 Button::new("Remove").on_press(Message::RemoveAddress(address.clone()));
 
