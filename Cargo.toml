@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 async-std = "1.12.0"
-iced = "0.10.0"
+iced = { version = "0.10.0", features = ["advanced"] }
+thiserror = "1.0.47"
