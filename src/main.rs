@@ -1,6 +1,4 @@
-use std::{collections::HashMap, time};
-
-use async_std::task::sleep;
+use std::collections::HashMap;
 
 use iced::{
     executor,
@@ -10,25 +8,27 @@ use iced::{
     window, Application, Command, Settings, Subscription, Theme,
 };
 
+mod connection;
+
 #[derive(Debug, Default)]
 struct ApplicationState {
-    connections: HashMap<String, String>,
+    connections: HashMap<String, Option<connection::Result>>,
     input_address: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum Message {
-    InputAddressChanged(String),
-    AsyncTest(String, String),
-    AddAddress,
-    RemoveAddress(String),
+    ConnectionResult(String, connection::Result),
+    Interaction(Interaction),
     Exit,
 }
 
-async fn some_async_fun(_key: String) -> &'static str {
-    sleep(time::Duration::from_secs(2)).await;
+#[derive(Debug, Clone)]
+enum Interaction {
+    InputAddressChanged(String),
+    AddAddress,
 
-    "async resolved"
+    RemoveAddress(String),
 }
 
 impl Application for ApplicationState {
@@ -47,35 +47,39 @@ impl Application for ApplicationState {
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
-            Message::InputAddressChanged(current) => {
-                self.input_address = current;
-                Command::none()
-            }
-            Message::AddAddress => {
-                let address = self.input_address.clone();
-                self.input_address.clear();
-
-                self.connections
-                    .insert(address.clone(), "Not resolved".into());
-
-                Command::perform(some_async_fun(address.clone()), |arg| {
-                    Message::AsyncTest(address, arg.into())
-                })
-            }
-            Message::RemoveAddress(key) => {
-                self.connections.remove(&key);
-                Command::none()
-            }
-
-            Message::AsyncTest(key, resolved) => {
-                if let Some(value) = self.connections.get_mut(&key) {
-                    *value = resolved;
+            Message::ConnectionResult(key, resolved) => {
+                if self.connections.contains_key(&key) {
+                    self.connections.insert(key, Some(resolved));
                 }
 
                 Command::none()
             }
-
             Message::Exit => window::close(),
+
+            Message::Interaction(interaction) => match interaction {
+                Interaction::InputAddressChanged(current) => {
+                    self.input_address = current;
+                    Command::none()
+                }
+
+                Interaction::AddAddress => {
+                    let address = self.input_address.clone();
+                    self.input_address.clear();
+
+                    self.connections.insert(address.clone(), None);
+
+                    let async_address = address.clone();
+                    Command::perform(
+                        async move { connection::try_connect(&async_address) },
+                        |resolved| Message::ConnectionResult(address, resolved),
+                    )
+                }
+
+                Interaction::RemoveAddress(key) => {
+                    self.connections.remove(&key);
+                    Command::none()
+                }
+            },
         }
     }
 
@@ -95,20 +99,33 @@ impl Application for ApplicationState {
         })
     }
 
-    fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
+    fn view(&self) -> iced::Element<Self::Message> {
         let mut col = {
-            let input = TextInput::new("Connect to", &self.input_address)
-                .on_input(Message::InputAddressChanged)
-                .on_submit(Message::AddAddress);
+            let input = iced::Element::from(
+                TextInput::new("Connect to", &self.input_address)
+                    .on_input(Interaction::InputAddressChanged)
+                    .on_submit(Interaction::AddAddress),
+            )
+            .map(Message::Interaction);
 
             Column::new().padding(5).push(input)
         };
 
-        for (address, connected_status) in self.connections.iter() {
+        for (address, connection_state) in &self.connections {
+            let connection_text: String = match connection_state {
+                Some(state) => match state {
+                    Ok(_) => String::from("Connected !"),
+                    Err(err) => format!("{err:?}"),
+                },
+                None => "Connected !".into(),
+            };
+
             let ip_text_widget =
-                Text::new(format!("{address} - {connected_status}")).width(iced::Length::Fill);
-            let delete_button =
-                Button::new("Remove").on_press(Message::RemoveAddress(address.clone()));
+                Text::new(format!("{address} - {connection_text}")).width(iced::Length::Fill);
+            let delete_button = iced::Element::from(
+                Button::new("Remove").on_press(Interaction::RemoveAddress(address.clone())),
+            )
+            .map(Message::Interaction);
 
             let row = row![ip_text_widget, delete_button].padding(5);
 
