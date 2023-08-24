@@ -12,7 +12,7 @@ mod connection;
 
 #[derive(Debug, Default)]
 struct ApplicationState {
-    connections: HashMap<String, Option<connection::Result>>,
+    connections: HashMap<String, connection::Result>,
     input_address: String,
 }
 
@@ -48,10 +48,7 @@ impl Application for ApplicationState {
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
             Message::ConnectionResult(key, resolved) => {
-                if self.connections.contains_key(&key) {
-                    self.connections.insert(key, Some(resolved));
-                }
-
+                self.connections.insert(key, resolved);
                 Command::none()
             }
             Message::Exit => window::close(),
@@ -65,8 +62,6 @@ impl Application for ApplicationState {
                 Interaction::AddAddress => {
                     let address = self.input_address.clone();
                     self.input_address.clear();
-
-                    self.connections.insert(address.clone(), None);
 
                     let async_address = address.clone();
                     Command::perform(
@@ -113,11 +108,8 @@ impl Application for ApplicationState {
 
         for (address, connection_state) in &self.connections {
             let connection_text: String = match connection_state {
-                Some(state) => match state {
-                    Ok(_) => String::from("Connected !"),
-                    Err(err) => format!("{err:?}"),
-                },
-                None => "Connected !".into(),
+                Ok(connection) => format!("Connected ! - {connection:?}"),
+                Err(err) => format!("{err:?}"),
             };
 
             let ip_text_widget =
