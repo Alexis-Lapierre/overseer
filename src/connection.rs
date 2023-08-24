@@ -27,9 +27,9 @@ impl Connection {
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
-    ParseError(AddrParseError),
+    ParseError(#[from] AddrParseError),
     #[error(transparent)]
-    ConnectionError(io::Error),
+    ConnectionError(#[from] io::Error),
 }
 
 // TODO: maybe make async some day when doing heavy computation
@@ -41,16 +41,4 @@ pub fn try_connect(uri: &str) -> Result {
     stream.write_all(b"Hello from the rust program Overseer\n")?;
 
     Ok(Connection::new(stream))
-}
-
-impl From<AddrParseError> for Error {
-    fn from(err: AddrParseError) -> Self {
-        Self::ParseError(err)
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Self::ConnectionError(err)
-    }
 }
