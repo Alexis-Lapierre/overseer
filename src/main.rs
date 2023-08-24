@@ -60,9 +60,7 @@ impl Application for ApplicationState {
                 }
 
                 Interaction::AddAddress => {
-                    let address = self.input_address.clone();
-                    self.input_address.clear();
-
+                    let address = std::mem::take(&mut self.input_address);
                     let async_address = address.clone();
                     Command::perform(
                         async move { connection::try_connect(&async_address) },
