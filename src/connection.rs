@@ -34,7 +34,7 @@ pub enum Error {
 
 // TODO: maybe make async some day when doing heavy computation
 pub fn try_connect(uri: &str) -> Result {
-    let address = SocketAddr::from_str(&uri)?;
+    let address = SocketAddr::from_str(uri)?;
 
     let mut stream = TcpStream::connect(address)?;
 
