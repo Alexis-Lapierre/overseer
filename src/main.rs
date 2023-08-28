@@ -10,6 +10,12 @@ use iced::{
 
 mod connection;
 
+enum ConnectionState {
+    ConnectionError(connection::Error),
+    ConnectionEstablished(connection::Connection),
+    LoggedIn(connection::Connection),
+}
+
 #[derive(Debug, Default)]
 struct ApplicationState {
     connections: HashMap<Arc<str>, connection::Result>,
@@ -63,7 +69,7 @@ impl Application for ApplicationState {
                     let address = std::mem::take(&mut self.input_address);
 
                     let address: Arc<str> = address.into();
-                    Command::perform(connection::try_connect(address.clone()), |resolved| {
+                    Command::perform(connection::connect(address.clone()), |resolved| {
                         Message::ConnectionResult(address, resolved)
                     })
                 }
