@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use iced::{
     executor,
@@ -12,13 +12,13 @@ mod connection;
 
 #[derive(Debug, Default)]
 struct ApplicationState {
-    connections: HashMap<String, connection::Result>,
+    connections: HashMap<Arc<str>, connection::Result>,
     input_address: String,
 }
 
 #[derive(Debug)]
 enum Message {
-    ConnectionResult(String, connection::Result),
+    ConnectionResult(Arc<str>, connection::Result),
     Interaction(Interaction),
     Exit,
 }
@@ -28,7 +28,7 @@ enum Interaction {
     InputAddressChanged(String),
     AddAddress,
 
-    RemoveAddress(String),
+    RemoveAddress(Arc<str>),
 }
 
 impl Application for ApplicationState {
@@ -61,11 +61,11 @@ impl Application for ApplicationState {
 
                 Interaction::AddAddress => {
                     let address = std::mem::take(&mut self.input_address);
-                    let async_address = address.clone();
-                    Command::perform(
-                        async move { connection::try_connect(&async_address) },
-                        |resolved| Message::ConnectionResult(address, resolved),
-                    )
+
+                    let address: Arc<str> = address.into();
+                    Command::perform(connection::try_connect(address.clone()), |resolved| {
+                        Message::ConnectionResult(address, resolved)
+                    })
                 }
 
                 Interaction::RemoveAddress(key) => {

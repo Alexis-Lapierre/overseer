@@ -1,8 +1,11 @@
+use async_std::net::TcpStream;
+use iced::futures::AsyncWriteExt;
 use std::{
-    io::{self, Write},
-    net::{AddrParseError, SocketAddr, TcpStream},
+    io,
+    net::{AddrParseError, SocketAddr},
     result,
     str::FromStr,
+    sync::Arc,
 };
 use thiserror::Error;
 
@@ -32,13 +35,14 @@ pub enum Error {
     ConnectionError(#[from] io::Error),
 }
 
-// TODO: maybe make async some day when doing heavy computation
-pub fn try_connect(uri: &str) -> Result {
-    let address = SocketAddr::from_str(uri)?;
+pub async fn try_connect(uri: Arc<str>) -> Result {
+    let address = SocketAddr::from_str(&uri)?;
 
-    let mut stream = TcpStream::connect(address)?;
+    let mut stream = TcpStream::connect(address).await?;
 
-    stream.write_all(b"Hello from the rust program Overseer\n")?;
+    stream
+        .write_all(b"Hello from the rust program Overseer\n")
+        .await?;
 
     Ok(Connection::new(stream))
 }
