@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, result, sync::Arc};
 
 use iced::{
     executor,
@@ -9,12 +9,7 @@ use iced::{
 };
 
 mod connection;
-
-enum ConnectionState {
-    ConnectionError(connection::Error),
-    ConnectionEstablished(connection::Connection),
-    LoggedIn(connection::Connection),
-}
+use connection::{Connection, ConnectionEstablished};
 
 #[derive(Debug, Default)]
 struct ApplicationState {
@@ -24,7 +19,11 @@ struct ApplicationState {
 
 #[derive(Debug)]
 enum Message {
-    ConnectionResult(Arc<str>, connection::Result),
+    ConnectionResult(
+        Arc<str>,
+        result::Result<ConnectionEstablished, connection::Error>,
+    ),
+    LoggedIn(Arc<str>, Result<connection::LoggedIn, connection::Error>),
     Interaction(Interaction),
     Exit,
 }
@@ -53,10 +52,22 @@ impl Application for ApplicationState {
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
-            Message::ConnectionResult(key, resolved) => {
-                self.connections.insert(key, resolved);
+            Message::ConnectionResult(key, resolved) => match resolved {
+                Ok(established) => Command::perform(established.log_in(), |logged_in| {
+                    Message::LoggedIn(key, logged_in)
+                }),
+                Err(error) => {
+                    self.connections.insert(key, Err(error));
+                    Command::none()
+                }
+            },
+
+            Message::LoggedIn(key, result) => {
+                self.connections
+                    .insert(key, result.map(Connection::LoggedIn));
                 Command::none()
             }
+
             Message::Exit => window::close(),
 
             Message::Interaction(interaction) => match interaction {

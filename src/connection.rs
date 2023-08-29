@@ -19,32 +19,24 @@ pub enum Connection {
     LoggedIn(LoggedIn),
 }
 
-pub async fn connect(uri: Arc<str>) -> Result {
+pub async fn connect(uri: Arc<str>) -> result::Result<ConnectionEstablished, Error> {
     let address = SocketAddr::from_str(&uri)?;
 
     let stream = TcpStream::connect(address).await?;
 
-    Ok(Connection::ConnectionEstablished(ConnectionEstablished {
-        stream,
-    }))
-}
-
-impl Connection {
-    fn new(stream: TcpStream) -> Self {
-        ConnectionEstablished { stream }.into()
-    }
+    Ok(ConnectionEstablished { stream })
 }
 
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
-    AddrParseError(#[from] AddrParseError),
+    AddrParse(#[from] AddrParseError),
     #[error(transparent)]
-    ConnectionError(#[from] io::Error),
+    Connection(#[from] io::Error),
     #[error("Invalid Password")]
     InvalidPassword,
     #[error(transparent)]
-    ParseError(#[from] std::str::Utf8Error),
+    Parse(#[from] std::str::Utf8Error),
 }
 
 #[derive(Debug)]
@@ -64,7 +56,7 @@ impl From<ConnectionEstablished> for Connection {
 }
 
 impl ConnectionEstablished {
-    pub async fn log_in(mut self: Self) -> result::Result<LoggedIn, Error> {
+    pub async fn log_in(mut self) -> result::Result<LoggedIn, Error> {
         self.stream
             .write_all(format!("C_LOGON \"{DEFAULT_XENA_PASSWORD}\"\n").as_bytes())
             .await?;
@@ -74,7 +66,7 @@ impl ConnectionEstablished {
 
         let response = std::str::from_utf8(&buf[..bytes_read])?;
 
-        if response != "<OK>\n" {
+        if response == "<OK>\n" {
             Ok(LoggedIn {
                 stream: self.stream,
             })
