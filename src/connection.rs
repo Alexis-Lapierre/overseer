@@ -58,3 +58,9 @@ impl Connection {
         }
     }
 }
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        let _ignored = futures::executor::block_on(self.stream.write_all(b"C_LOGOFF\n"));
+    }
+}

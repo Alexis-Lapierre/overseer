@@ -1707,6 +1707,7 @@ name = "overseer"
 version = "0.1.0"
 dependencies = [
  "async-std",
+ "futures",
  "iced",
  "thiserror",
 ]
