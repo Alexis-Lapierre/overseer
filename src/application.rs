@@ -14,14 +14,31 @@ use connection::Connection;
 type ConnectionResult = Result<Connection, connection::Error>;
 
 #[derive(Default, Debug)]
+struct ConnectionState {
+    connection: Option<Connection>,
+    interfaces: Vec<String>,
+}
+
+impl From<Connection> for ConnectionState {
+    fn from(connection: Connection) -> Self {
+        Self {
+            connection: Some(connection),
+            interfaces: Vec::default(),
+        }
+    }
+}
+
+#[derive(Default, Debug)]
 pub struct Application {
-    connections: HashMap<Arc<str>, ConnectionResult>,
+    connections: HashMap<Arc<str>, ConnectionState>,
+    failed_connection: HashMap<Arc<str>, connection::Error>,
     input_address: String,
 }
 
 #[derive(Debug)]
 pub enum Message {
     Connect(Arc<str>, ConnectionResult),
+    ListOfInterfaces(Arc<str>, Connection, Vec<String>),
     UserInteraction(Interaction),
     Exit,
 }
@@ -31,6 +48,12 @@ pub enum Interaction {
     InputAddressChanged(String),
     AddAddress,
     RemoveAddress(Arc<str>),
+}
+
+impl Application {
+    fn fail_connection(&mut self, key: Arc<str>, error: connection::Error) {
+        self.failed_connection.insert(key, error);
+    }
 }
 
 impl iced::Application for Application {
@@ -49,8 +72,27 @@ impl iced::Application for Application {
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
-            Message::Connect(key, result) => {
-                self.connections.insert(key, result);
+            Message::Connect(key, result) => match result {
+                Ok(connection) => {
+                    self.connections
+                        .insert(key.clone(), ConnectionState::default());
+
+                    Command::perform(connection.list_interfaces(), |result| match result {
+                        Ok((connection, list)) => Message::ListOfInterfaces(key, connection, list),
+                        Err(error) => Message::Connect(key, Err(error)),
+                    })
+                }
+                Err(error) => {
+                    self.fail_connection(key, error);
+                    Command::none()
+                }
+            },
+
+            Message::ListOfInterfaces(key, connection, interfaces) => {
+                if let Some(the_connection) = self.connections.get_mut(&key) {
+                    the_connection.connection = Some(connection);
+                    the_connection.interfaces = interfaces;
+                }
                 Command::none()
             }
 
@@ -108,10 +150,11 @@ impl iced::Application for Application {
         };
 
         for (address, connection_state) in &self.connections {
-            let connection_text: String = match connection_state {
-                Ok(connection) => format!("Connected ! - {connection:?}"),
-                Err(err) => format!("{err:?}"),
-            };
+            let connection_text = format!(
+                "Connected ! - {:?} - {}",
+                connection_state.interfaces,
+                connection_state.interfaces.len()
+            );
 
             let ip_text_widget =
                 Text::new(format!("{address} - {connection_text}")).width(iced::Length::Fill);
@@ -123,6 +166,10 @@ impl iced::Application for Application {
             let row = row![ip_text_widget, delete_button].padding(5);
 
             col = col.push(row);
+        }
+
+        for (address, failed) in &self.failed_connection {
+            col = col.push(Text::new(format!("{address} - {failed:?}")));
         }
 
         Container::new(col)

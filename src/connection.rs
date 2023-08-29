@@ -1,11 +1,11 @@
-use async_std::{io::ReadExt, net::TcpStream};
+use async_std::{future, io::ReadExt, net::TcpStream};
 use iced::futures::AsyncWriteExt;
 use std::{
     io,
     net::{AddrParseError, SocketAddr},
-    result,
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 use thiserror::Error;
 
@@ -41,7 +41,7 @@ impl Connection {
         Ok(connection)
     }
 
-    async fn log_in(&mut self) -> result::Result<(), Error> {
+    async fn log_in(&mut self) -> Result<(), Error> {
         self.stream
             .write_all(format!("C_LOGON \"{DEFAULT_XENA_PASSWORD}\"\n").as_bytes())
             .await?;
@@ -56,6 +56,34 @@ impl Connection {
         } else {
             Err(Error::InvalidPassword)
         }
+    }
+
+    pub async fn list_interfaces(mut self) -> Result<(Self, Vec<String>), Error> {
+        self.stream.write_all(b"*/* P_INTERFACE ?\n").await?;
+
+        let mut buf = [0u8; 2048];
+
+        let mut interfaces: Vec<String> = Vec::new();
+        loop {
+            if future::timeout(Duration::from_millis(100), self.stream.read(&mut buf))
+                .await
+                .is_err()
+            {
+                break;
+            }
+
+            let bytes_read = self.stream.read(&mut buf).await?;
+
+            let stream_input = std::str::from_utf8(&buf[..bytes_read])?;
+
+            interfaces.extend(
+                stream_input
+                    .split('\n')
+                    .filter(|str| !str.is_empty())
+                    .map(str::to_string),
+            );
+        }
+        Ok((self, interfaces))
     }
 }
 
