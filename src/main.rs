@@ -1,4 +1,4 @@
-use std::{collections::HashMap, result, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use iced::{
     executor,
@@ -9,21 +9,19 @@ use iced::{
 };
 
 mod connection;
-use connection::{Connection, ConnectionEstablished};
+use connection::Connection;
+
+type ConnectionResult = Result<Connection, connection::Error>;
 
 #[derive(Debug, Default)]
 struct ApplicationState {
-    connections: HashMap<Arc<str>, connection::Result>,
+    connections: HashMap<Arc<str>, ConnectionResult>,
     input_address: String,
 }
 
 #[derive(Debug)]
 enum Message {
-    ConnectionResult(
-        Arc<str>,
-        result::Result<ConnectionEstablished, connection::Error>,
-    ),
-    LoggedIn(Arc<str>, Result<connection::LoggedIn, connection::Error>),
+    ConnectionResult(Arc<str>, ConnectionResult),
     Interaction(Interaction),
     Exit,
 }
@@ -52,19 +50,8 @@ impl Application for ApplicationState {
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
-            Message::ConnectionResult(key, resolved) => match resolved {
-                Ok(established) => Command::perform(established.log_in(), |logged_in| {
-                    Message::LoggedIn(key, logged_in)
-                }),
-                Err(error) => {
-                    self.connections.insert(key, Err(error));
-                    Command::none()
-                }
-            },
-
-            Message::LoggedIn(key, result) => {
-                self.connections
-                    .insert(key, result.map(Connection::LoggedIn));
+            Message::ConnectionResult(key, result) => {
+                self.connections.insert(key, result);
                 Command::none()
             }
 
@@ -80,7 +67,7 @@ impl Application for ApplicationState {
                     let address = std::mem::take(&mut self.input_address);
 
                     let address: Arc<str> = address.into();
-                    Command::perform(connection::connect(address.clone()), |resolved| {
+                    Command::perform(Connection::connect(address.clone()), |resolved| {
                         Message::ConnectionResult(address, resolved)
                     })
                 }

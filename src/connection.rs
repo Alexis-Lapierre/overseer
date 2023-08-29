@@ -9,22 +9,12 @@ use std::{
 };
 use thiserror::Error;
 
-pub type Result = result::Result<Connection, Error>;
-
 const DEFAULT_XENA_PASSWORD: &str = "xena";
 
+// represent an a logged in connection to a xena
 #[derive(Debug)]
-pub enum Connection {
-    ConnectionEstablished(ConnectionEstablished),
-    LoggedIn(LoggedIn),
-}
-
-pub async fn connect(uri: Arc<str>) -> result::Result<ConnectionEstablished, Error> {
-    let address = SocketAddr::from_str(&uri)?;
-
-    let stream = TcpStream::connect(address).await?;
-
-    Ok(ConnectionEstablished { stream })
+pub struct Connection {
+    stream: TcpStream,
 }
 
 #[derive(Error, Debug)]
@@ -39,24 +29,19 @@ pub enum Error {
     Parse(#[from] std::str::Utf8Error),
 }
 
-#[derive(Debug)]
-pub struct ConnectionEstablished {
-    stream: TcpStream,
-}
+impl Connection {
+    pub async fn connect(uri: Arc<str>) -> Result<Connection, Error> {
+        let address = SocketAddr::from_str(&uri)?;
 
-#[derive(Debug)]
-pub struct LoggedIn {
-    stream: TcpStream,
-}
+        let stream = TcpStream::connect(address).await?;
 
-impl From<ConnectionEstablished> for Connection {
-    fn from(connection: ConnectionEstablished) -> Self {
-        Self::ConnectionEstablished(connection)
+        let mut connection = Connection { stream };
+        connection.log_in().await?;
+
+        Ok(connection)
     }
-}
 
-impl ConnectionEstablished {
-    pub async fn log_in(mut self) -> result::Result<LoggedIn, Error> {
+    async fn log_in(&mut self) -> result::Result<(), Error> {
         self.stream
             .write_all(format!("C_LOGON \"{DEFAULT_XENA_PASSWORD}\"\n").as_bytes())
             .await?;
@@ -67,9 +52,7 @@ impl ConnectionEstablished {
         let response = std::str::from_utf8(&buf[..bytes_read])?;
 
         if response == "<OK>\n" {
-            Ok(LoggedIn {
-                stream: self.stream,
-            })
+            Ok(())
         } else {
             Err(Error::InvalidPassword)
         }
