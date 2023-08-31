@@ -16,14 +16,14 @@ type ConnectionResult = Result<Connection, connection::Error>;
 #[derive(Default, Debug)]
 struct ConnectionState {
     connection: Option<Connection>,
-    interfaces: Vec<String>,
+    interfaces: Option<Vec<String>>,
 }
 
 impl From<Connection> for ConnectionState {
     fn from(connection: Connection) -> Self {
         Self {
             connection: Some(connection),
-            interfaces: Vec::default(),
+            interfaces: None,
         }
     }
 }
@@ -91,7 +91,7 @@ impl iced::Application for Application {
             Message::ListOfInterfaces(key, connection, interfaces) => {
                 if let Some(the_connection) = self.connections.get_mut(&key) {
                     the_connection.connection = Some(connection);
-                    the_connection.interfaces = interfaces;
+                    the_connection.interfaces = Some(interfaces);
                 }
                 Command::none()
             }
@@ -150,11 +150,11 @@ impl iced::Application for Application {
         };
 
         for (address, connection_state) in &self.connections {
-            let connection_text = format!(
-                "Connected ! - {:?} - {}",
-                connection_state.interfaces,
-                connection_state.interfaces.len()
-            );
+            let connections = &connection_state.interfaces;
+            let connection_text = match connections {
+                None => "Loading...".to_string(),
+                Some(data) => format!("{:?} - {}", data, data.len()),
+            };
 
             let ip_text_widget =
                 Text::new(format!("{address} - {connection_text}")).width(iced::Length::Fill);
