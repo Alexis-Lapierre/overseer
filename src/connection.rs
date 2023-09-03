@@ -9,6 +9,9 @@ use std::{
 };
 use thiserror::Error;
 
+mod interface;
+pub use interface::Interfaces;
+
 const DEFAULT_XENA_PASSWORD: &str = "xena";
 
 // represent an a logged in connection to a xena
@@ -27,6 +30,8 @@ pub enum Error {
     InvalidPassword,
     #[error(transparent)]
     Parse(#[from] std::str::Utf8Error),
+    #[error("TCP connection parse Error")]
+    TCPParse,
 }
 
 impl Connection {
@@ -58,12 +63,12 @@ impl Connection {
         }
     }
 
-    pub async fn list_interfaces(mut self) -> Result<(Self, Vec<String>), Error> {
+    pub async fn list_interfaces(mut self) -> Result<(Self, Interfaces), Error> {
         self.stream.write_all(b"*/* P_INTERFACE ?\n").await?;
 
         let mut buf = [0u8; 2048];
 
-        let mut interfaces: Vec<String> = Vec::new();
+        let mut interfaces = Interfaces::default();
         loop {
             if future::timeout(Duration::from_millis(100), self.stream.read(&mut buf))
                 .await
@@ -76,15 +81,35 @@ impl Connection {
 
             let stream_input = std::str::from_utf8(&buf[..bytes_read])?;
 
-            interfaces.extend(
-                stream_input
-                    .split('\n')
-                    .filter(|str| !str.is_empty())
-                    .map(str::to_string),
-            );
+            let module_list = stream_input
+                .split('\n')
+                .filter(|str| !str.is_empty())
+                .map(parse_interface_from_line);
+
+            for maybe_elem in module_list {
+                let (module, port) = maybe_elem?;
+                interfaces.modules.entry(module).or_default().insert(port);
+            }
         }
         Ok((self, interfaces))
     }
+}
+
+fn parse_interface_from_line<'a>(line: &'a str) -> Result<(u8, u8), Error> {
+    debug_assert!(!line.is_empty());
+    let get_module_and_port = |line: &'a str| -> Option<(&'a str, &'a str)> {
+        let mut module_and_port = line.split(' ').next()?.split('/');
+        let module = module_and_port.next()?;
+        let port = module_and_port.next()?;
+        Some((module, port))
+    };
+
+    let (module, port) = get_module_and_port(line).ok_or(Error::TCPParse)?;
+
+    let module = u8::from_str(module).map_err(|_| Error::TCPParse)?;
+    let port = u8::from_str(port).map_err(|_| Error::TCPParse)?;
+
+    Ok((module, port))
 }
 
 impl Drop for Connection {

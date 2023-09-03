@@ -16,7 +16,7 @@ type ConnectionResult = Result<Connection, connection::Error>;
 #[derive(Default, Debug)]
 struct ConnectionState {
     connection: Option<Connection>,
-    interfaces: Option<Vec<String>>,
+    interfaces: Option<connection::Interfaces>,
 }
 
 impl From<Connection> for ConnectionState {
@@ -38,7 +38,7 @@ pub struct Application {
 #[derive(Debug)]
 pub enum Message {
     Connect(Arc<str>, ConnectionResult),
-    ListOfInterfaces(Arc<str>, Connection, Vec<String>),
+    ListOfInterfaces(Arc<str>, Connection, connection::Interfaces),
     UserInteraction(Interaction),
     Exit,
 }
@@ -150,22 +150,35 @@ impl iced::Application for Application {
         };
 
         for (address, connection_state) in &self.connections {
-            let connections = &connection_state.interfaces;
-            let connection_text = match connections {
-                None => "Loading...".to_string(),
-                Some(data) => format!("{:?} - {}", data, data.len()),
-            };
-
-            let ip_text_widget =
-                Text::new(format!("{address} - {connection_text}")).width(iced::Length::Fill);
             let delete_button = iced::Element::from(
                 Button::new("Remove").on_press(Interaction::RemoveAddress(address.clone())),
             )
             .map(Message::UserInteraction);
 
-            let row = row![ip_text_widget, delete_button].padding(5);
+            let ip_text_widget = {
+                let description = if connection_state.interfaces.is_some() {
+                    format!("{address}")
+                } else {
+                    format!("{address} - Loading...")
+                };
 
+                Text::new(description).width(iced::Length::Fill)
+            };
+
+            let row = row![ip_text_widget, delete_button].padding(5);
             col = col.push(row);
+
+            if let Some(interfaces) = &connection_state.interfaces {
+                for (module, ports) in &interfaces.modules {
+                    let module_name = Text::new(format!("    module: {module}"));
+                    col = col.push(module_name);
+
+                    for port in ports {
+                        let port_name = Text::new(format!("        port: {module}/{port}"));
+                        col = col.push(port_name);
+                    }
+                }
+            }
         }
 
         for (address, failed) in &self.failed_connection {
