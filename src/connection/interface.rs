@@ -11,11 +11,11 @@ pub struct Interfaces {
 
 #[derive(Debug, Clone)]
 pub struct State {
-    pub lock: LockState,
+    pub lock: Lock,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum LockState {
+pub enum Lock {
     Released,
     ReservedByYou,
     ReservedByOther,
@@ -27,7 +27,7 @@ pub enum Error {
     InvalidInput(String),
 }
 
-impl TryFrom<&str> for LockState {
+impl TryFrom<&str> for Lock {
     type Error = Error;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {

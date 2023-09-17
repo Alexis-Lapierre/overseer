@@ -10,8 +10,7 @@ use std::{
 use thiserror::Error;
 
 mod interface;
-pub use interface::Interfaces;
-pub use interface::State;
+pub use interface::*;
 
 const DEFAULT_XENA_PASSWORD: &str = "xena";
 

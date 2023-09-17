@@ -8,7 +8,7 @@ use iced::{
     keyboard::{KeyCode, Modifiers},
     subscription,
     widget::{row, Button, Column, Container, Text, TextInput},
-    window, Command, Padding, Subscription, Theme,
+    window, Command, Subscription, Theme,
 };
 
 use crate::connection;
@@ -51,6 +51,7 @@ pub enum Interaction {
     InputAddressChanged(String),
     AddAddress,
     RemoveAddress(Arc<str>),
+    LockRequestedOn(u8, u8),
 }
 
 impl Application {
@@ -120,6 +121,8 @@ impl iced::Application for Application {
                     self.connections.remove(&key);
                     Command::none()
                 }
+
+                Interaction::LockRequestedOn(_module, _port) => todo!(),
             },
         }
     }
@@ -149,7 +152,7 @@ impl iced::Application for Application {
             )
             .map(Message::UserInteraction);
 
-            Column::new().padding(5).push(input)
+            Column::new().padding(5).spacing(15).push(input)
         };
 
         for (address, connection_state) in &self.connections {
@@ -168,8 +171,7 @@ impl iced::Application for Application {
                 Text::new(description).width(iced::Length::Fill)
             };
 
-            let row = row![ip_text_widget, delete_button].padding(5);
-            col = col.push(row);
+            col = col.push(row![ip_text_widget, delete_button]);
 
             if let Some(interfaces) = &connection_state.interfaces {
                 col = col.push(show_interfaces(interfaces));
@@ -189,22 +191,38 @@ impl iced::Application for Application {
     }
 }
 
-fn show_interfaces(interfaces: &connection::Interfaces) -> iced::Element<Message> {
-    let mut col = Column::new().padding(Padding::from([0, 0, 0, 30]));
+fn show_interfaces(interfaces: &connection::Interfaces) -> Column<'_, Message> {
+    let mut col = Column::new().padding([0, 0, 0, 30]);
     for (module, ports) in &interfaces.modules {
         let module_name = Text::new(format!("module {module}"));
         col = col.push(module_name);
-        col = col.push(show_port(*module, ports));
+        col = col.push(show_port(module, ports));
     }
-    col.into()
+    col
 }
 
-fn show_port(module: u8, ports: &BTreeMap<u8, connection::State>) -> iced::Element<Message> {
-    let mut col = Column::new().padding(Padding::from([0, 0, 0, 45]));
+fn show_port<'a>(
+    module: &'a u8,
+    ports: &'a BTreeMap<u8, connection::State>,
+) -> Column<'a, Message> {
+    let mut col = Column::new().padding([0, 0, 0, 45]);
     for (port, state) in ports {
-        let port_name = Text::new(format!("port: {module}/{port} - {:?}", state.lock));
-        col = col.push(port_name);
+        let port_name = Text::new(format!("port: {module}/{port} - {:?}", state.lock))
+            .width(iced::Length::Fill);
+        let button = {
+            let text = match state.lock {
+                connection::Lock::Released => "Reserve",
+                connection::Lock::ReservedByYou => "Release",
+                connection::Lock::ReservedByOther => "Relinquish",
+            };
+
+            iced::Element::from(
+                Button::new(text).on_press(Interaction::LockRequestedOn(*module, *port)),
+            )
+            .map(Message::UserInteraction)
+        };
+        col = col.push(row![port_name, button].padding([0, 45, 0, 0]));
     }
 
-    col.into()
+    col
 }
