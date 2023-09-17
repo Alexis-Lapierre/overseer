@@ -1,11 +1,14 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use iced::{
     executor,
     keyboard::{KeyCode, Modifiers},
     subscription,
     widget::{row, Button, Column, Container, Text, TextInput},
-    window, Command, Subscription, Theme,
+    window, Command, Padding, Subscription, Theme,
 };
 
 use crate::connection;
@@ -169,16 +172,7 @@ impl iced::Application for Application {
             col = col.push(row);
 
             if let Some(interfaces) = &connection_state.interfaces {
-                for (module, ports) in &interfaces.modules {
-                    let module_name = Text::new(format!("    module: {module}"));
-                    col = col.push(module_name);
-
-                    for (port, state) in ports {
-                        let port_name =
-                            Text::new(format!("        port: {module}/{port} - {:?}", state.lock));
-                        col = col.push(port_name);
-                    }
-                }
+                col = col.push(show_interfaces(interfaces));
             }
         }
 
@@ -193,4 +187,24 @@ impl iced::Application for Application {
             .padding(5)
             .into()
     }
+}
+
+fn show_interfaces(interfaces: &connection::Interfaces) -> iced::Element<Message> {
+    let mut col = Column::new().padding(Padding::from([0, 0, 0, 30]));
+    for (module, ports) in &interfaces.modules {
+        let module_name = Text::new(format!("module {module}"));
+        col = col.push(module_name);
+        col = col.push(show_port(*module, ports));
+    }
+    col.into()
+}
+
+fn show_port(module: u8, ports: &BTreeMap<u8, connection::State>) -> iced::Element<Message> {
+    let mut col = Column::new().padding(Padding::from([0, 0, 0, 45]));
+    for (port, state) in ports {
+        let port_name = Text::new(format!("port: {module}/{port} - {:?}", state.lock));
+        col = col.push(port_name);
+    }
+
+    col.into()
 }

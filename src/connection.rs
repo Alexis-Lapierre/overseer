@@ -11,8 +11,7 @@ use thiserror::Error;
 
 mod interface;
 pub use interface::Interfaces;
-
-use self::interface::State;
+pub use interface::State;
 
 const DEFAULT_XENA_PASSWORD: &str = "xena";
 
