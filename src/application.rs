@@ -173,8 +173,9 @@ impl iced::Application for Application {
                     let module_name = Text::new(format!("    module: {module}"));
                     col = col.push(module_name);
 
-                    for port in ports {
-                        let port_name = Text::new(format!("        port: {module}/{port}"));
+                    for (port, state) in ports {
+                        let port_name =
+                            Text::new(format!("        port: {module}/{port} - {:?}", state.lock));
                         col = col.push(port_name);
                     }
                 }
