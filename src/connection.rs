@@ -1,11 +1,10 @@
-use async_std::{future, io::ReadExt, net::TcpStream};
+use async_std::{io::ReadExt, net::TcpStream};
 use iced::futures::AsyncWriteExt;
 use std::{
     io,
     net::{AddrParseError, SocketAddr},
     str::{FromStr, Utf8Error},
     sync::Arc,
-    time::Duration,
 };
 use thiserror::Error;
 
@@ -82,13 +81,6 @@ impl Connection {
 
         let mut interfaces = Interfaces::default();
         loop {
-            if future::timeout(Duration::from_millis(100), self.stream.read(&mut buf))
-                .await
-                .is_err()
-            {
-                break;
-            }
-
             let bytes_read = self.stream.read(&mut buf).await?;
 
             let stream_input = std::str::from_utf8(&buf[..bytes_read])?;
@@ -106,8 +98,11 @@ impl Connection {
                     .or_default()
                     .insert(port, state);
             }
+
+            if stream_input.ends_with("\n\n") {
+                return Ok((self, interfaces));
+            }
         }
-        Ok((self, interfaces))
     }
 }
 
