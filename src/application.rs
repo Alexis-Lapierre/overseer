@@ -3,6 +3,8 @@ use std::{
     sync::Arc,
 };
 
+use async_std::sync::Mutex;
+
 use iced::{
     executor,
     keyboard::{KeyCode, Modifiers},
@@ -16,16 +18,16 @@ use connection::Connection;
 
 type ConnectionResult = Result<Connection, connection::Error>;
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct ConnectionState {
-    connection: Option<Connection>,
+    connection: Arc<Mutex<Connection>>,
     interfaces: Option<connection::Interfaces>,
 }
 
 impl From<Connection> for ConnectionState {
-    fn from(connection: Connection) -> Self {
-        Self {
-            connection: Some(connection),
+    fn from(value: Connection) -> Self {
+        ConnectionState {
+            connection: Arc::new(Mutex::new(value)),
             interfaces: None,
         }
     }
@@ -41,7 +43,7 @@ pub struct Application {
 #[derive(Debug)]
 pub enum Message {
     Connect(Arc<str>, ConnectionResult),
-    ListOfInterfaces(Arc<str>, Connection, connection::Interfaces),
+    ListOfInterfaces(Arc<str>, connection::Interfaces),
     UserInteraction(Interaction),
     Exit,
 }
@@ -78,13 +80,17 @@ impl iced::Application for Application {
         match message {
             Message::Connect(key, result) => match result {
                 Ok(connection) => {
-                    self.connections
-                        .insert(key.clone(), ConnectionState::default());
+                    let connection_state = ConnectionState::from(connection);
+                    let connection_mutex = connection_state.connection.clone();
+                    self.connections.insert(key.clone(), connection_state);
 
-                    Command::perform(connection.list_interfaces(), |result| match result {
-                        Ok((connection, list)) => Message::ListOfInterfaces(key, connection, list),
-                        Err(error) => Message::Connect(key, Err(error)),
-                    })
+                    Command::perform(
+                        async move { connection_mutex.lock().await.list_interfaces().await },
+                        |result| match result {
+                            Ok(interfaces) => Message::ListOfInterfaces(key, interfaces),
+                            Err(error) => Message::Connect(key, Err(error)),
+                        },
+                    )
                 }
                 Err(error) => {
                     self.fail_connection(key, error);
@@ -92,9 +98,8 @@ impl iced::Application for Application {
                 }
             },
 
-            Message::ListOfInterfaces(key, connection, interfaces) => {
+            Message::ListOfInterfaces(key, interfaces) => {
                 if let Some(the_connection) = self.connections.get_mut(&key) {
-                    the_connection.connection = Some(connection);
                     the_connection.interfaces = Some(interfaces);
                 }
                 Command::none()

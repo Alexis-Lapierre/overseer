@@ -74,7 +74,7 @@ impl Connection {
         }
     }
 
-    pub async fn list_interfaces(mut self) -> Result<(Self, Interfaces), Error> {
+    pub async fn list_interfaces(&mut self) -> Result<Interfaces, Error> {
         self.stream.write_all(b"*/* P_RESERVATION ?\n\n").await?;
 
         let mut buf = [0u8; 2048];
@@ -100,7 +100,7 @@ impl Connection {
             }
 
             if stream_input.ends_with("\n\n") {
-                return Ok((self, interfaces));
+                return Ok(interfaces);
             }
         }
     }
