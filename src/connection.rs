@@ -2,7 +2,7 @@ use std::{
     io::{self, Read, Write},
     net::{AddrParseError, SocketAddr, TcpStream},
     ops::Deref,
-    str::{FromStr, Utf8Error},
+    str::FromStr,
     sync,
 };
 use thiserror::Error;
@@ -35,12 +35,6 @@ pub enum Error {
     Parse(#[from] anyhow::Error),
     #[error("TCP connection parse Error")]
     TCPParse,
-}
-
-impl From<Utf8Error> for Error {
-    fn from(value: Utf8Error) -> Self {
-        Self::Parse(value.into())
-    }
 }
 
 impl From<interface::Error> for Error {
@@ -85,12 +79,14 @@ impl Connection {
 }
 
 fn log_in(mut stream: TcpStream) -> Result<TcpStream, Error> {
-    stream.write_all(format!("C_LOGON \"{DEFAULT_XENA_PASSWORD}\"\n").as_bytes())?;
+    stream
+        .write_all(const_format::formatcp!("C_LOGON \"{DEFAULT_XENA_PASSWORD}\"\n").as_bytes())?;
 
     let mut buf = [0u8; 32];
     let bytes_read = stream.read(&mut buf)?;
 
-    let response = std::str::from_utf8(&buf[..bytes_read])?;
+    let response = std::str::from_utf8(&buf[..bytes_read])
+        .expect("TCP connection received invalid UTF-8 character !");
 
     if response == "<OK>\n" {
         Ok(stream)
@@ -100,6 +96,7 @@ fn log_in(mut stream: TcpStream) -> Result<TcpStream, Error> {
 }
 
 pub fn list_interfaces(stream: &mut TcpStream) -> Result<Interfaces, Error> {
+    // We send two line feed, this way the end of the command is detected we encountering empty line ("\n\n")
     stream.write_all(b"*/* P_RESERVATION ?\n\n")?;
 
     let mut buf = [0u8; 2048];
@@ -108,7 +105,8 @@ pub fn list_interfaces(stream: &mut TcpStream) -> Result<Interfaces, Error> {
     loop {
         let bytes_read = stream.read(&mut buf)?;
 
-        let stream_input = std::str::from_utf8(&buf[..bytes_read])?;
+        let stream_input = std::str::from_utf8(&buf[..bytes_read])
+            .expect("TCP connection received invalid UTF-8 characters !");
 
         let module_list = stream_input
             .split('\n')
