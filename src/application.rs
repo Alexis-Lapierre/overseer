@@ -3,8 +3,6 @@ use std::{
     sync::Arc,
 };
 
-use async_std::sync::Mutex;
-
 use iced::{
     executor,
     keyboard::{KeyCode, Modifiers},
@@ -20,14 +18,14 @@ type ConnectionResult = Result<Connection, connection::Error>;
 
 #[derive(Debug)]
 struct ConnectionState {
-    connection: Arc<Mutex<Connection>>,
+    connection: Connection,
     interfaces: Option<connection::Interfaces>,
 }
 
 impl From<Connection> for ConnectionState {
-    fn from(value: Connection) -> Self {
+    fn from(connection: Connection) -> Self {
         ConnectionState {
-            connection: Arc::new(Mutex::new(value)),
+            connection,
             interfaces: None,
         }
     }
@@ -80,17 +78,15 @@ impl iced::Application for Application {
         match message {
             Message::Connect(key, result) => match result {
                 Ok(connection) => {
-                    let connection_state = ConnectionState::from(connection);
-                    let connection_mutex = connection_state.connection.clone();
+                    let connection_state = ConnectionState::from(connection.clone());
                     self.connections.insert(key.clone(), connection_state);
 
-                    Command::perform(
-                        async move { connection_mutex.lock().await.list_interfaces().await },
-                        |result| match result {
+                    Command::perform(async move { connection.list_interfaces() }, |result| {
+                        match result {
                             Ok(interfaces) => Message::ListOfInterfaces(key, interfaces),
                             Err(error) => Message::Connect(key, Err(error)),
-                        },
-                    )
+                        }
+                    })
                 }
                 Err(error) => {
                     self.fail_connection(key, error);
@@ -117,8 +113,9 @@ impl iced::Application for Application {
                     let address = std::mem::take(&mut self.input_address);
 
                     let address: Arc<str> = address.into();
-                    Command::perform(Connection::connect(address.clone()), |resolved| {
-                        Message::Connect(address, resolved)
+                    let address_clone = address.clone();
+                    Command::perform(async move { Connection::connect(address) }, |resolved| {
+                        Message::Connect(address_clone, resolved)
                     })
                 }
 
