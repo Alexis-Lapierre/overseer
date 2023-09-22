@@ -14,7 +14,7 @@ pub struct State {
     pub lock: Lock,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Lock {
     Released,
     ReservedByYou,

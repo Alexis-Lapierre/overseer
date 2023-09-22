@@ -21,6 +21,7 @@ pub struct Connection {
 type Responder<T> = oneshot::Sender<T>;
 enum Command {
     ListInterfaces(Responder<Result<Interfaces, Error>>),
+    LockInterface(u8, u8, Responder<Result<(), Error>>),
 }
 
 #[derive(Error, Debug)]
@@ -29,8 +30,8 @@ pub enum Error {
     AddrParse(#[from] AddrParseError),
     #[error(transparent)]
     Connection(#[from] io::Error),
-    #[error("Invalid Password")]
-    InvalidPassword,
+    #[error(r#"Responce is not "<OK>""#)]
+    NotOk,
     #[error(transparent)]
     Parse(#[from] anyhow::Error),
     #[error("TCP connection parse Error")]
@@ -49,19 +50,23 @@ impl Connection {
 
         let stream = TcpStream::connect(address)?;
 
-        let mut stream = log_in(stream)?;
+        let mut stream = Stream::new(stream)?;
 
         let (tx, rx) = sync::mpsc::channel();
         std::thread::spawn(move || {
             while let Ok(cmd) = rx.recv() {
                 match cmd {
                     Command::ListInterfaces(responce) => {
-                        let _ = responce.send(list_interfaces(&mut stream));
+                        let _ = responce.send(stream.list_interfaces());
+                    }
+
+                    Command::LockInterface(module, port, responce) => {
+                        let _ = responce.send(stream.lock_interface(module, port));
                     }
                 }
             }
 
-            let _ = stream.write_all(b"C_LOGOFF\n");
+            let _ = stream.stream.write_all(b"C_LOGOFF\n");
         });
 
         Ok(Connection { stream: tx })
@@ -76,54 +81,100 @@ impl Connection {
             .recv()
             .expect("Could not receive from TCP handeling thread !")
     }
-}
 
-fn log_in(mut stream: TcpStream) -> Result<TcpStream, Error> {
-    stream
-        .write_all(const_format::formatcp!("C_LOGON \"{DEFAULT_XENA_PASSWORD}\"\n").as_bytes())?;
+    pub fn lock_interface(&mut self, module: u8, port: u8) -> Result<(), Error> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.stream
+            .send(Command::LockInterface(module, port, resp_tx))
+            .expect("Could not send to TCP handeling thread !");
 
-    let mut buf = [0u8; 32];
-    let bytes_read = stream.read(&mut buf)?;
-
-    let response = std::str::from_utf8(&buf[..bytes_read])
-        .expect("TCP connection received invalid UTF-8 character !");
-
-    if response == "<OK>\n" {
-        Ok(stream)
-    } else {
-        Err(Error::InvalidPassword)
+        resp_rx
+            .recv()
+            .expect("Could not receive TCP handeling thread !")
     }
 }
 
-pub fn list_interfaces(stream: &mut TcpStream) -> Result<Interfaces, Error> {
-    // We send two line feed, this way the end of the command is detected we encountering empty line ("\n\n")
-    stream.write_all(b"*/* P_RESERVATION ?\n\n")?;
+struct Stream {
+    stream: TcpStream,
+}
 
-    let mut buf = [0u8; 2048];
+impl Stream {
+    fn new(mut stream: TcpStream) -> Result<Self, Error> {
+        stream.write_all(
+            const_format::formatcp!("C_LOGON \"{DEFAULT_XENA_PASSWORD}\"\n").as_bytes(),
+        )?;
 
-    let mut interfaces = Interfaces::default();
-    loop {
+        let mut buf = [0u8; 32];
         let bytes_read = stream.read(&mut buf)?;
 
-        let stream_input = std::str::from_utf8(&buf[..bytes_read])
-            .expect("TCP connection received invalid UTF-8 characters !");
+        let response = std::str::from_utf8(&buf[..bytes_read])
+            .expect("TCP connection received invalid UTF-8 character !");
 
-        let module_list = stream_input
-            .split('\n')
-            .filter(|str| !str.is_empty())
-            .map(parse_interface_from_line);
-
-        for maybe_elem in module_list {
-            let (module, port, state) = maybe_elem?;
-            interfaces
-                .modules
-                .entry(module)
-                .or_default()
-                .insert(port, state);
+        if response != "<OK>\n" {
+            return Err(Error::NotOk);
         }
 
-        if stream_input.ends_with("\n\n") {
-            return Ok(interfaces);
+        stream.write_all("C_OWNER \"overseer\"\n".as_bytes())?;
+        let bytes_read = stream.read(&mut buf)?;
+
+        let response = std::str::from_utf8(&buf[..bytes_read])
+            .expect("TCP connection received invalid UTF-8 character !");
+
+        if response == "<OK>\n" {
+            Ok(Self { stream })
+        } else {
+            Err(Error::NotOk)
+        }
+    }
+
+    fn list_interfaces(&mut self) -> Result<Interfaces, Error> {
+        // We send two line feed, this way the end of the command is detected we encountering empty line ("\n\n")
+        self.stream.write_all(b"*/* P_RESERVATION ?\n\n")?;
+
+        let mut buf = [0u8; 2048];
+
+        let mut interfaces = Interfaces::default();
+        loop {
+            let bytes_read = self.stream.read(&mut buf)?;
+
+            let stream_input = std::str::from_utf8(&buf[..bytes_read])
+                .expect("TCP connection received invalid UTF-8 characters !");
+
+            let module_list = stream_input
+                .split('\n')
+                .filter(|str| !str.is_empty())
+                .map(parse_interface_from_line);
+
+            for maybe_elem in module_list {
+                let (module, port, state) = maybe_elem?;
+                interfaces
+                    .modules
+                    .entry(module)
+                    .or_default()
+                    .insert(port, state);
+            }
+
+            if stream_input.ends_with("\n\n") {
+                return Ok(interfaces);
+            }
+        }
+    }
+
+    fn lock_interface(&mut self, module: u8, port: u8) -> Result<(), Error> {
+        let line = format!("{module}/{port} P_RESERVATION RESERVE\n");
+        self.stream.write_all(line.as_bytes())?;
+
+        let mut buf = [0u8; 2048];
+
+        let bytes_read = self.stream.read(&mut buf)?;
+
+        let success = std::str::from_utf8(&buf[..bytes_read])
+            .expect("TCP connection received invalid UTF-8 charcters !");
+
+        if success == "<OK>\n" {
+            Ok(())
+        } else {
+            Err(Error::NotOk)
         }
     }
 }

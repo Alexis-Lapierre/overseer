@@ -41,7 +41,7 @@ pub struct Application {
 #[derive(Debug)]
 pub enum Message {
     Connect(Arc<str>, ConnectionResult),
-    ListOfInterfaces(Arc<str>, connection::Interfaces),
+    ListOfInterfaces(Arc<str>, Result<connection::Interfaces, connection::Error>),
     UserInteraction(Interaction),
     Exit,
 }
@@ -51,7 +51,7 @@ pub enum Interaction {
     InputAddressChanged(String),
     AddAddress,
     RemoveAddress(Arc<str>),
-    LockRequestedOn(u8, u8),
+    LockRequestedOn(Arc<str>, u8, u8),
 }
 
 impl Application {
@@ -82,10 +82,7 @@ impl iced::Application for Application {
                     self.connections.insert(key.clone(), connection_state);
 
                     Command::perform(async move { connection.list_interfaces() }, |result| {
-                        match result {
-                            Ok(interfaces) => Message::ListOfInterfaces(key, interfaces),
-                            Err(error) => Message::Connect(key, Err(error)),
-                        }
+                        Message::ListOfInterfaces(key, result)
                     })
                 }
                 Err(error) => {
@@ -95,8 +92,13 @@ impl iced::Application for Application {
             },
 
             Message::ListOfInterfaces(key, interfaces) => {
-                if let Some(the_connection) = self.connections.get_mut(&key) {
-                    the_connection.interfaces = Some(interfaces);
+                match interfaces {
+                    Ok(interfaces) => {
+                        if let Some(the_connection) = self.connections.get_mut(&key) {
+                            the_connection.interfaces = Some(interfaces);
+                        }
+                    }
+                    Err(error) => self.fail_connection(key, error),
                 }
                 Command::none()
             }
@@ -124,7 +126,32 @@ impl iced::Application for Application {
                     Command::none()
                 }
 
-                Interaction::LockRequestedOn(_module, _port) => todo!(),
+                Interaction::LockRequestedOn(key, module, port) => {
+                    if let Some(connection) = self.connections.get(&key) {
+                        let current_state = connection
+                            .interfaces
+                            .as_ref()
+                            .unwrap()
+                            .modules
+                            .get(&module)
+                            .unwrap()
+                            .get(&port)
+                            .unwrap();
+
+                        let mut connection = connection.connection.clone();
+                        if current_state.lock == connection::Lock::Released {
+                            return Command::perform(
+                                async move {
+                                    connection.lock_interface(module, port).expect("WIP");
+                                    connection.list_interfaces()
+                                },
+                                |resolved| Message::ListOfInterfaces(key, resolved),
+                            );
+                        }
+                    }
+
+                    Command::none()
+                }
             },
         }
     }
@@ -176,7 +203,7 @@ impl iced::Application for Application {
             col = col.push(row![ip_text_widget, delete_button]);
 
             if let Some(interfaces) = &connection_state.interfaces {
-                col = col.push(show_interfaces(interfaces));
+                col = col.push(show_interfaces(address, interfaces));
             }
         }
 
@@ -193,17 +220,21 @@ impl iced::Application for Application {
     }
 }
 
-fn show_interfaces(interfaces: &connection::Interfaces) -> Column<'_, Message> {
+fn show_interfaces<'a>(
+    address: &'a Arc<str>,
+    interfaces: &'a connection::Interfaces,
+) -> Column<'a, Message> {
     let mut col = Column::new().padding([0, 0, 0, 30]);
     for (module, ports) in &interfaces.modules {
         let module_name = Text::new(format!("module {module}"));
         col = col.push(module_name);
-        col = col.push(show_port(module, ports));
+        col = col.push(show_port(address, module, ports));
     }
     col
 }
 
 fn show_port<'a>(
+    address: &'a Arc<str>,
     module: &'a u8,
     ports: &'a BTreeMap<u8, connection::State>,
 ) -> Column<'a, Message> {
@@ -218,9 +249,11 @@ fn show_port<'a>(
                 connection::Lock::ReservedByOther => "Relinquish",
             };
 
-            iced::Element::from(
-                Button::new(text).on_press(Interaction::LockRequestedOn(*module, *port)),
-            )
+            iced::Element::from(Button::new(text).on_press(Interaction::LockRequestedOn(
+                address.clone(),
+                *module,
+                *port,
+            )))
             .map(Message::UserInteraction)
         };
         col = col.push(row![port_name, button].padding([0, 45, 0, 0]));
