@@ -51,7 +51,7 @@ pub enum Interaction {
     InputAddressChanged(String),
     AddAddress,
     RemoveAddress(Arc<str>),
-    LockRequestedOn(Arc<str>, u8, u8),
+    LockActionOn(Arc<str>, connection::Lock, u8, u8),
 }
 
 impl Application {
@@ -126,28 +126,18 @@ impl iced::Application for Application {
                     Command::none()
                 }
 
-                Interaction::LockRequestedOn(key, module, port) => {
+                Interaction::LockActionOn(key, lock_state, module, port) => {
                     if let Some(connection) = self.connections.get(&key) {
-                        let current_state = connection
-                            .interfaces
-                            .as_ref()
-                            .unwrap()
-                            .modules
-                            .get(&module)
-                            .unwrap()
-                            .get(&port)
-                            .unwrap();
-
                         let mut connection = connection.connection.clone();
-                        if current_state.lock == connection::Lock::Released {
-                            return Command::perform(
-                                async move {
-                                    connection.lock_interface(module, port).expect("WIP");
-                                    connection.list_interfaces()
-                                },
-                                |resolved| Message::ListOfInterfaces(key, resolved),
-                            );
-                        }
+                        return Command::perform(
+                            async move {
+                                connection
+                                    .lock_action_on(lock_state, module, port)
+                                    .expect("WIP");
+                                connection.list_interfaces()
+                            },
+                            |resolved| Message::ListOfInterfaces(key, resolved),
+                        );
                     }
 
                     Command::none()
@@ -249,8 +239,9 @@ fn show_port<'a>(
                 connection::Lock::ReservedByOther => "Relinquish",
             };
 
-            iced::Element::from(Button::new(text).on_press(Interaction::LockRequestedOn(
+            iced::Element::from(Button::new(text).on_press(Interaction::LockActionOn(
                 address.clone(),
+                state.lock,
                 *module,
                 *port,
             )))
