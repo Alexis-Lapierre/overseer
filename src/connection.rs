@@ -149,7 +149,7 @@ impl Stream {
 
     fn list_interfaces(&mut self) -> Result<Interfaces, Error> {
         // We send two line feed, this way the end of the command is detected we encountering empty line ("\n\n")
-        self.stream.write_all(b"*/* P_RESERVATION ?\n\n")?;
+        self.stream.write_all(b"*/* P_RESERVATION ?\nSYNC\n")?;
 
         let mut buf = [0u8; 2048];
 
@@ -160,22 +160,21 @@ impl Stream {
             let stream_input = std::str::from_utf8(&buf[..bytes_read])
                 .expect("TCP connection received invalid UTF-8 characters !");
 
-            let module_list = stream_input
-                .split('\n')
-                .filter(|str| !str.is_empty())
-                .map(parse_interface_from_line);
+            let lines = stream_input.split('\n').filter(|str| !str.is_empty());
 
-            for maybe_elem in module_list {
-                let (module, port, state) = maybe_elem?;
+            for line in lines {
+                // Attained the SYNC statement, we have finished
+                if line == "<SYNC>" {
+                    return Ok(interfaces);
+                }
+
+                let (module, port, state) = parse_interface_from_line(line)?;
+
                 interfaces
                     .modules
                     .entry(module)
                     .or_default()
                     .insert(port, state);
-            }
-
-            if stream_input.ends_with("\n\n") {
-                return Ok(interfaces);
             }
         }
     }
