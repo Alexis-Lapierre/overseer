@@ -7,7 +7,10 @@ use application::Application as Overseer;
 
 fn main() -> Result<(), iced::Error> {
     let window_settings = iced::window::Settings {
-        min_size: Some((250, 100)),
+        min_size: Some(iced::Size {
+            width: 250.,
+            height: 100.,
+        }),
         ..Default::default()
     };
 

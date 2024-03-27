@@ -5,8 +5,7 @@ use std::{
 
 use iced::{
     executor,
-    keyboard::{KeyCode, Modifiers},
-    subscription,
+    keyboard::{Key, Modifiers},
     widget::{row, Button, Column, Container, Text, TextInput},
     window, Command, Subscription, Theme,
 };
@@ -103,7 +102,7 @@ impl iced::Application for Application {
                 Command::none()
             }
 
-            Message::Exit => window::close(),
+            Message::Exit => window::close(window::Id::MAIN),
 
             Message::UserInteraction(interaction) => match interaction {
                 Interaction::InputAddressChanged(current) => {
@@ -147,18 +146,12 @@ impl iced::Application for Application {
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        subscription::events_with(|event, _status| {
-            if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                key_code,
-                modifiers,
-            }) = event
-            {
-                if key_code == KeyCode::Q && modifiers == Modifiers::CTRL {
-                    return Some(Message::Exit);
-                }
+        iced::keyboard::on_key_press(|key, modifiers| {
+            if key.as_ref() == Key::Character("q") && modifiers == Modifiers::CTRL {
+                Some(Message::Exit)
+            } else {
+                None
             }
-
-            None
         })
     }
 
