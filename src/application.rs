@@ -127,7 +127,7 @@ impl iced::Application for Application {
 
                 Interaction::LockActionOn(key, lock_state, module, port) => {
                     if let Some(connection) = self.connections.get(&key) {
-                        let mut connection = connection.connection.clone();
+                        let connection = connection.connection.clone();
                         return Command::perform(
                             async move {
                                 connection
@@ -147,11 +147,9 @@ impl iced::Application for Application {
 
     fn subscription(&self) -> Subscription<Self::Message> {
         iced::keyboard::on_key_press(|key, modifiers| {
-            if key.as_ref() == Key::Character("q") && modifiers == Modifiers::CTRL {
-                Some(Message::Exit)
-            } else {
-                None
-            }
+            let is_exit_keybind =
+                key.as_ref() == Key::Character("q") && modifiers == Modifiers::CTRL;
+            is_exit_keybind.then(|| Message::Exit)
         })
     }
 

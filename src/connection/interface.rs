@@ -6,7 +6,7 @@ type InterfaceList = BTreeMap<u8, BTreeMap<u8, State>>;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Invalid input, was not either RELEASED or RESERVED_BY_YOU or RESERVED_BY_OTHER but {:?}", .0)]
+    #[error(r#"Invalid input, expected "RELEASED" or "RESERVED_BY_YOU" or "RESERVED_BY_OTHER" but got "{:?}""#, .0)]
     InvalidInput(String),
 }
 
@@ -31,8 +31,8 @@ impl Lock {
     const fn str(self) -> &'static str {
         match self {
             Lock::Released => "Released",
-            Lock::ReservedByYou => "ReleasedByYou",
-            Lock::ReservedByOther => "ReleasedByOther",
+            Lock::ReservedByYou => "ReservedByYou",
+            Lock::ReservedByOther => "RelservedByOther",
         }
     }
 }

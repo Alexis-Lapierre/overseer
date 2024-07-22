@@ -12,6 +12,17 @@ pub use interface::*;
 
 const DEFAULT_XENA_PASSWORD: &str = "xena";
 
+macro_rules! formatcpln {
+    ($format_string:expr $( $(, $expr:expr )+ )? $(,)? ) => {
+        const_format::concatcp!(
+            const_format::formatcp!(
+                $format_string
+                $(, $($expr,)+)?
+            ), '\n'
+        )
+    };
+}
+
 // represent an a logged in connection to a xena
 #[derive(Debug, Clone)]
 pub struct Connection {
@@ -24,6 +35,21 @@ enum Command {
     LockInterface(u8, u8, Responder<Result<(), Error>>),
     UnlockInterface(u8, u8, Responder<Result<(), Error>>),
     RelinquishInterface(u8, u8, Responder<Result<(), Error>>),
+}
+
+impl Command {
+    const fn from_lock_state(
+        state: Lock,
+        module: u8,
+        port: u8,
+        resp_tx: Responder<Result<(), Error>>,
+    ) -> Self {
+        match state {
+            Lock::Released => Command::LockInterface(module, port, resp_tx),
+            Lock::ReservedByYou => Command::UnlockInterface(module, port, resp_tx),
+            Lock::ReservedByOther => Command::RelinquishInterface(module, port, resp_tx),
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -83,34 +109,25 @@ impl Connection {
     }
 
     pub fn list_interfaces(self) -> Result<Interfaces, Error> {
+        self.send_order(|tx| Command::ListInterfaces(tx))
+    }
+
+    pub fn lock_action_on(&self, current_state: Lock, module: u8, port: u8) -> Result<(), Error> {
+        self.send_order(|tx| Command::from_lock_state(current_state, module, port, tx))
+    }
+
+    fn send_order<F, T>(&self, command_builder: F) -> Result<T, Error>
+    where
+        F: FnOnce(Responder<Result<T, Error>>) -> Command,
+    {
         let (resp_tx, resp_rx) = oneshot::channel();
+        let command = command_builder(resp_tx);
         self.stream
-            .send(Command::ListInterfaces(resp_tx))
+            .send(command)
             .expect("Could not send to TCP handeling thread !");
         resp_rx
             .recv()
             .expect("Could not receive from TCP handeling thread !")
-    }
-
-    pub fn lock_action_on(
-        &mut self,
-        current_state: Lock,
-        module: u8,
-        port: u8,
-    ) -> Result<(), Error> {
-        let (resp_tx, resp_rx) = oneshot::channel();
-        let command = match current_state {
-            Lock::Released => Command::LockInterface(module, port, resp_tx),
-            Lock::ReservedByYou => Command::UnlockInterface(module, port, resp_tx),
-            Lock::ReservedByOther => Command::RelinquishInterface(module, port, resp_tx),
-        };
-        self.stream
-            .send(command)
-            .expect("Could not send to TCP handeling thread !");
-
-        resp_rx
-            .recv()
-            .expect("Could not receive TCP handeling thread !")
     }
 }
 
@@ -120,9 +137,7 @@ struct Stream {
 
 impl Stream {
     fn new(mut stream: TcpStream) -> Result<Self, Error> {
-        stream.write_all(
-            const_format::formatcp!("C_LOGON \"{DEFAULT_XENA_PASSWORD}\"\n").as_bytes(),
-        )?;
+        stream.write_all(formatcpln!(r#"C_LOGON "{DEFAULT_XENA_PASSWORD}""#).as_bytes())?;
 
         let mut buf = [0u8; 32];
         let bytes_read = stream.read(&mut buf)?;
@@ -180,56 +195,29 @@ impl Stream {
 
     fn lock_interface(&mut self, module: u8, port: u8) -> Result<(), Error> {
         let line = format!("{module}/{port} P_RESERVATION RESERVE\n");
-        self.stream.write_all(line.as_bytes())?;
-
-        let mut buf = [0u8; 2048];
-
-        let bytes_read = self.stream.read(&mut buf)?;
-
-        let success = std::str::from_utf8(&buf[..bytes_read])
-            .expect("TCP connection received invalid UTF-8 charcters !");
-
-        if success == "<OK>\n" {
-            Ok(())
-        } else {
-            Err(Error::NotOk)
-        }
+        self.send_await_ok(line.as_bytes())
     }
 
     fn unlock_interface(&mut self, module: u8, port: u8) -> Result<(), Error> {
         let line = format!("{module}/{port} P_RESERVATION RELEASE\n");
-        self.stream.write_all(line.as_bytes())?;
-
-        let mut buf = [0u8; 2048];
-
-        let bytes_read = self.stream.read(&mut buf)?;
-
-        let success = std::str::from_utf8(&buf[..bytes_read])
-            .expect("TCP connection received invalid UTF-8 charcters !");
-
-        if success == "<OK>\n" {
-            Ok(())
-        } else {
-            Err(Error::NotOk)
-        }
+        self.send_await_ok(line.as_bytes())
     }
 
     fn relinquish_interface(&mut self, module: u8, port: u8) -> Result<(), Error> {
         let line = format!("{module}/{port} P_RESERVATION RELINQUISH\n");
-        self.stream.write_all(line.as_bytes())?;
+        self.send_await_ok(line.as_bytes())
+    }
+
+    fn send_await_ok(&mut self, line_as_bytes: &[u8]) -> Result<(), Error> {
+        self.stream.write_all(line_as_bytes)?;
 
         let mut buf = [0u8; 2048];
 
         let bytes_read = self.stream.read(&mut buf)?;
-
         let success = std::str::from_utf8(&buf[..bytes_read])
             .expect("TCP connection received invalid UTF-8 charcters !");
 
-        if success == "<OK>\n" {
-            Ok(())
-        } else {
-            Err(Error::NotOk)
-        }
+        (success == "<OK>\n").then(|| ()).ok_or(Error::NotOk)
     }
 }
 
