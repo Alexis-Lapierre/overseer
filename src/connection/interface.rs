@@ -1,8 +1,14 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt::Display};
 
 use thiserror::Error;
 
 type InterfaceList = BTreeMap<u8, BTreeMap<u8, State>>;
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("Invalid input, was not either RELEASED or RESERVED_BY_YOU or RESERVED_BY_OTHER but {:?}", .0)]
+    InvalidInput(String),
+}
 
 #[derive(Default, Debug)]
 pub struct Interfaces {
@@ -21,10 +27,26 @@ pub enum Lock {
     ReservedByOther,
 }
 
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("Invalid input, was not either RELEASED or RESERVED_BY_YOU or RESERVED_BY_OTHER but {:?}", .0)]
-    InvalidInput(String),
+impl Lock {
+    const fn str(self) -> &'static str {
+        match self {
+            Lock::Released => "Released",
+            Lock::ReservedByYou => "ReleasedByYou",
+            Lock::ReservedByOther => "ReleasedByOther",
+        }
+    }
+}
+
+impl Display for Lock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.str())
+    }
+}
+
+impl From<Lock> for &'static str {
+    fn from(lock: Lock) -> Self {
+        lock.str()
+    }
 }
 
 impl TryFrom<&str> for Lock {

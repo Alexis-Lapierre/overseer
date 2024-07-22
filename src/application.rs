@@ -226,12 +226,7 @@ fn show_port<'a>(
         let port_name = Text::new(format!("port: {module}/{port} - {:?}", state.lock))
             .width(iced::Length::Fill);
         let button = {
-            let text = match state.lock {
-                connection::Lock::Released => "Reserve",
-                connection::Lock::ReservedByYou => "Release",
-                connection::Lock::ReservedByOther => "Relinquish",
-            };
-
+            let text: &'static str = state.lock.into();
             iced::Element::from(Button::new(text).on_press(Interaction::LockActionOn(
                 address.clone(),
                 state.lock,
