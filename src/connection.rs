@@ -148,7 +148,6 @@ impl Stream {
     }
 
     fn list_interfaces(&mut self) -> Result<Interfaces, Error> {
-        // We send two line feed, this way the end of the command is detected we encountering empty line ("\n\n")
         self.stream.write_all(b"*/* P_RESERVATION ?\nSYNC\n")?;
 
         let mut buf = [0u8; 2048];
