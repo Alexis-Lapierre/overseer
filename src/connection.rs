@@ -109,7 +109,7 @@ impl Connection {
     }
 
     pub fn list_interfaces(self) -> Result<Interfaces, Error> {
-        self.send_order(|tx| Command::ListInterfaces(tx))
+        self.send_order(Command::ListInterfaces)
     }
 
     pub fn lock_action_on(&self, current_state: Lock, module: u8, port: u8) -> Result<(), Error> {
@@ -217,7 +217,7 @@ impl Stream {
         let success = std::str::from_utf8(&buf[..bytes_read])
             .expect("TCP connection received invalid UTF-8 charcters !");
 
-        (success == "<OK>\n").then(|| ()).ok_or(Error::NotOk)
+        (success == "<OK>\n").then_some(()).ok_or(Error::NotOk)
     }
 }
 
